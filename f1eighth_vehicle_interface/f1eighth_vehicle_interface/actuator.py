@@ -29,13 +29,19 @@ class F1eighthActuator(Node):
         self.declare_parameter("max_steer", Parameter.Type.INTEGER)
         self.declare_parameter("tire_angle_to_steer_ratio", Parameter.Type.DOUBLE)
         self.declare_parameter("rate", Parameter.Type.DOUBLE)
-        self.declare_parameter("kp", Parameter.Type.DOUBLE)
-        self.declare_parameter("ki", Parameter.Type.DOUBLE)
-        self.declare_parameter("kd", Parameter.Type.DOUBLE)
+        self.declare_parameter("kp_pwm", Parameter.Type.DOUBLE)
+        self.declare_parameter("ki_pwm", Parameter.Type.DOUBLE)
+        self.declare_parameter("kd_pwm", Parameter.Type.DOUBLE)
+        self.declare_parameter("kp_ste", Parameter.Type.DOUBLE)
+        self.declare_parameter("ki_ste", Parameter.Type.DOUBLE)
+        self.declare_parameter("kd_ste", Parameter.Type.DOUBLE)
 
         publication_period = (
             1.0 / self.get_parameter("rate").get_parameter_value().double_value
         )
+        
+        if not isinstance(publication_period, float):
+            raise ValueError(f"Invalid period {publication_period}")
 
         config = Config(
             init_pwm=self.get_parameter("init_pwm").get_parameter_value().integer_value,
@@ -53,22 +59,35 @@ class F1eighthActuator(Node):
             tire_angle_to_steer_ratio=self.get_parameter("tire_angle_to_steer_ratio")
             .get_parameter_value()
             .double_value,
-            period=publication_period,
         )
 
         # PID controller parameters
-        kp = self.get_parameter("kp").get_parameter_value().double_value
-        ki = self.get_parameter("ki").get_parameter_value().double_value
-        kd = self.get_parameter("kd").get_parameter_value().double_value
+        kp_pwm = self.get_parameter("kp_pwm").get_parameter_value().double_value
+        ki_pwm = self.get_parameter("ki_pwm").get_parameter_value().double_value
+        kd_pwm = self.get_parameter("kd_pwm").get_parameter_value().double_value
+        kp_ste = self.get_parameter("kp_ste").get_parameter_value().double_value
+        ki_ste = self.get_parameter("ki_ste").get_parameter_value().double_value
+        kd_ste = self.get_parameter("kd_ste").get_parameter_value().double_value
 
         # Initialize the PID controller
-        min_pid_output = config.min_pwm - config.init_pwm
-        max_pid_output = config.max_pwm - config.init_pwm
+        min_speed_pid_output = config.min_pwm - config.init_pwm
+        max_speed_pid_output = config.max_pwm - config.init_pwm
         self.speed_pid = PID(
-            Kp=kp,
-            Ki=ki,
-            Kd=kd,
-            output_limits=(min_pid_output, max_pid_output),
+            Kp=kp_pwm,
+            Ki=ki_pwm,
+            Kd=kd_pwm,
+            output_limits=(min_speed_pid_output, max_speed_pid_output),
+            sample_time=publication_period,
+        )
+
+        min_angle_pid_output = config.min_steer - config.init_steer
+        max_angle_pid_output = config.max_steer - config.init_steer
+        self.angle_pid = PID(
+            Kp=kp_ste,
+            Ki=ki_ste,
+            Kd=kd_ste,
+            output_limits=(min_angle_pid_output, max_angle_pid_output),
+            sample_time=publication_period,
         )
 
         # Initialize the controller state
@@ -77,8 +96,6 @@ class F1eighthActuator(Node):
             current_speed=None,
             target_tire_angle=None,
             current_tire_angle=None,
-            last_speed_delta=None,
-            last_angle_delta=None,
         )
 
         # Initialize the PCA9685 driver
@@ -125,7 +142,7 @@ class F1eighthActuator(Node):
 
         self.state.current_speed = speed
 
-        # TODO: add tire_angle_to_steer_ratio
+        # TODO: check correctness of the code
         self.state.current_tire_angle = angular_speed
 
     def control_callback(self, msg):
@@ -148,14 +165,7 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        delta = self.state.target_speed - self.state.current_speed
-        p = self.speed_pid.Kp * delta
-        i = self.speed_pid.Ki * (delta * self.config.period)
-        d = self.speed_pid.Kd * ((delta - self.state.last_speed_delta) / self.config.period)
-        pid_value = p + i + d
-        self.state.last_speed_delta = delta
-
-        pwm_value = self.config.init_pwm + pid_value
+        pwm_value = self.config.init_pwm + self.speed_pid(self.state.target_speed)
         return pwm_value
 
     def compute_steer_value(self) -> int:
@@ -165,12 +175,7 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        delta = self.state.target_tire_angle - self.state.current_tiretarget_tire_angle
-        p = self.speed_pid.Kp * delta
-        i = self.speed_pid.Ki * (delta * self.config.period)
-        d = self.speed_pid.Kd * ((delta - self.state.last_angle_delta) / self.config.period)
-        steer_value = (p + i + d) * self.config.tire_angle_to_steer_ratio
-        self.state.last_angle_delta = delta
+        steer_value = self.angle_pid(self.state.target_tire_angle) * self.config.tire_angle_to_steer_ratio
 
         return steer_value
 
@@ -185,8 +190,6 @@ class State:
 
     # TODO
     # - Add additional state variables needed for your control algorithm
-    last_speed_delta: Optional[float]
-    last_angle_delta: Optional[float]
 
 
 @dataclass
@@ -200,8 +203,6 @@ class Config:
     max_steer: int
 
     tire_angle_to_steer_ratio: float
-
-    period: float
 
 
 def main():
