@@ -165,7 +165,8 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        pwm_value = self.config.init_pwm + self.speed_pid(self.state.target_speed)
+        self.speed_pid.setpoint = self.state.target_speed
+        pwm_value = self.config.init_pwm + self.speed_pid(self.state.current_speed)
         return pwm_value
 
     def compute_steer_value(self) -> int:
@@ -175,8 +176,8 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        steer_value = self.angle_pid(self.state.target_tire_angle) * self.config.tire_angle_to_steer_ratio
-
+        self.angle_pid.setpoint = self.state.target_tire_angle
+        steer_value = self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio
         return steer_value
 
 
