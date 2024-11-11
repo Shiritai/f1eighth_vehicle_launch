@@ -9,8 +9,10 @@ from simple_pid import PID
 import rclpy
 from rclpy.node import Node
 from rclpy import Parameter
+from sensor_msgs.msg import Imu
 from geometry_msgs.msg import TwistWithCovarianceStamped
 from autoware_auto_control_msgs.msg import AckermannControlCommand
+from autoware_auto_vehicle_msgs.msg import VelocityReport
 
 
 class F1eighthActuator(Node):
@@ -43,13 +45,13 @@ class F1eighthActuator(Node):
         if not isinstance(publication_period, float):
             raise ValueError(f"Invalid period {publication_period}")
 
+        init_pwm = self.get_parameter("init_pwm").get_parameter_value().integer_value
+        init_steer = self.get_parameter("init_steer").get_parameter_value().integer_value
         config = Config(
-            init_pwm=self.get_parameter("init_pwm").get_parameter_value().integer_value,
+            init_pwm=init_pwm,
             min_pwm=self.get_parameter("min_pwm").get_parameter_value().integer_value,
             max_pwm=self.get_parameter("max_pwm").get_parameter_value().integer_value,
-            init_steer=(
-                self.get_parameter("init_steer").get_parameter_value().integer_value
-            ),
+            init_steer=init_steer,
             min_steer=self.get_parameter("min_steer")
             .get_parameter_value()
             .integer_value,
@@ -119,9 +121,18 @@ class F1eighthActuator(Node):
 
         # Subscribe to IMU data
         imu_subscription = self.create_subscription(
-            TwistWithCovarianceStamped,
-            "~/input/twist_with_covariance",
+            # TwistWithCovarianceStamped,
+            # "~/input/twist_with_covariance",
+            Imu,
+            "/mpu9250/imu_raw",
             self.imu_callback,
+            1,
+        )
+        
+        speed_subscription = self.create_subscription(
+            VelocityReport,
+            "/vehicle/status/velocity_status",
+            self.velocity_callback,
             1,
         )
 
@@ -137,13 +148,19 @@ class F1eighthActuator(Node):
         self.timer = timer
 
     def imu_callback(self, msg):
-        speed = msg.twist.twist.linear.x
-        angular_speed = msg.twist.twist.angular.z
-
-        self.state.current_speed = speed
+        # speed = msg.twist.twist.linear.x
+        # angular_speed = msg.twist.twist.angular.z
+        angular_speed = msg.angular_velocity.z
+        l = 0.325
+        v = self.state.current_speed
 
         # TODO: check correctness of the code
-        self.state.current_tire_angle = angular_speed
+        self.state.current_tire_angle = (angular_speed * l) / v
+
+    def velocity_callback(self, msg):
+        speed = msg.longitudinal_velocity
+        self.state.current_speed = speed
+        # self.get_logger().info(f"[v] Update speed {speed}")
 
     def control_callback(self, msg):
         self.state.target_speed = msg.longitudinal.speed
@@ -165,9 +182,19 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
+        speed_pid_factor = 4
         self.speed_pid.setpoint = self.state.target_speed
-        pwm_value = self.config.init_pwm + self.speed_pid(self.state.current_speed)
-        return pwm_value
+
+        if self.speed_pid.setpoint is None or self.state.current_speed is None:
+            self.get_logger().info(f"target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
+            return self.config.init_pwm
+        
+        pid = int(self.speed_pid(self.state.current_speed)) * speed_pid_factor
+
+        pwm_value = self.config.init_pwm + pid
+
+        self.get_logger().info(f"pwm_value [{pwm_value}], [S]pid [{pid}], target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
+        return max(min(pwm_value, 390), 370)
 
     def compute_steer_value(self) -> int:
         # TODO
@@ -176,9 +203,19 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        self.angle_pid.setpoint = self.state.target_tire_angle
-        steer_value = self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio
-        return steer_value
+        angle_pid_factor = 1
+        # steer_value = self.config.init_steer  # scenario 1, 2
+        self.angle_pid.setpoint = 0
+        # self.angle_pid.setpoint = self.state.target_tire_angle
+
+        if self.angle_pid.setpoint is None or self.state.current_tire_angle is None:
+            return self.config.init_steer
+        
+        pid = int(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor)
+        self.get_logger().info(f"[A]pid [{pid}], target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
+        steer_value = self.config.init_steer + pid
+
+        return max(min(steer_value, 520), 480)
 
 
 @dataclass
