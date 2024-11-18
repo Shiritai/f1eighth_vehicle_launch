@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from Adafruit_PCA9685 import PCA9685
 from simple_pid import PID
+import math
 
 import rclpy
 from rclpy.node import Node
@@ -155,7 +156,8 @@ class F1eighthActuator(Node):
         v = self.state.current_speed
 
         # TODO: check correctness of the code
-        self.state.current_tire_angle = (angular_speed * l) / v
+        if v != 0:
+            self.state.current_tire_angle = math.atan((angular_speed * l) / v) * 180 / math.pi
 
     def velocity_callback(self, msg):
         speed = msg.longitudinal_velocity
