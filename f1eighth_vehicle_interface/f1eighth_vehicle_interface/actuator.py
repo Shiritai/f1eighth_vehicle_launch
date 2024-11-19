@@ -24,6 +24,7 @@ class MyPid:
         self._kd = Kd
         self._period = period
         self._last_delta = 0
+        self._integral = 0
     
     def set_target(self, target: T):
         self._target = target
@@ -34,7 +35,8 @@ class MyPid:
     def __call__(self, current: T) -> T:
         delta = self._target - current
         p = self._kp * delta
-        i = self._ki * (delta * self._period)
+        self._integral += delta * self._period
+        i = self._ki * self._integral
         d = self._kd * ((delta - self._last_delta) / self._period)
         pid_value = p + i + d
         self._last_delta = delta
