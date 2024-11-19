@@ -23,21 +23,21 @@ class MyPid:
         self._ki = Ki
         self._kd = Kd
         self._period = period
-        self.last_delta = 0
+        self._last_delta = 0
     
     def set_target(self, target: T):
-        self.target = target
+        self._target = target
     
     def set_period(self, period: float):
         self._period = period
     
     def __call__(self, current: T) -> T:
-        delta = self.target - current
+        delta = self._target - current
         p = self._kp * delta
-        i = self._ki * (delta * self.period)
-        d = self._kd * ((delta - self.last_delta) / self.period)
+        i = self._ki * (delta * self._period)
+        d = self._kd * ((delta - self._last_delta) / self._period)
         pid_value = p + i + d
-        self.last_delta = delta
+        self._last_delta = delta
         return pid_value
 
 class F1eighthActuator(Node):
