@@ -155,6 +155,8 @@ class F1eighthActuator(Node):
             self.control_callback,
             1,
         )
+        
+        self.cnt = 0
 
         # Subscribe to IMU data
         imu_subscription = self.create_subscription(
@@ -190,7 +192,6 @@ class F1eighthActuator(Node):
         angular_speed = msg.angular_velocity.z
         l = 0.325
         v = self.state.current_speed
-
         # TODO: check correctness of the code
         if v != 0:
             self.state.current_tire_angle = math.atan((angular_speed * l) / v) * 180 / math.pi
@@ -231,8 +232,13 @@ class F1eighthActuator(Node):
 
         pwm_value = self.config.init_pwm + pid
 
-        self.get_logger().info(f"pwm_value [{pwm_value}], [S]pid [{pid}], target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
-        return max(min(pwm_value, 390), 370)
+        self.cnt += 1
+        if self.cnt % 8 == 0:
+            self.get_logger().info(f"""Speed
+    pwm_value           [{pwm_value}]
+    pid                 [{pid}]
+    target v.s. current [{self.state.target_speed:.4f}] <--[{self.state.target_speed - self.state.current_speed:.4f}]--> [{self.state.current_speed:.4f}]""")
+        return max(min(pwm_value, 400), 375)
 
     def compute_steer_value(self) -> int:
         # TODO
@@ -241,7 +247,6 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        angle_pid_factor = 1
         # steer_value = self.config.init_steer  # scenario 1, 2
         # return max(min(steer_value, 520), 480)
     
@@ -255,8 +260,13 @@ class F1eighthActuator(Node):
         
         steered_pid = int(round(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor))
         steer_value = self.config.init_steer - steered_pid
+        if self.cnt % 8 == 0:
+            self.get_logger().info(f"""Angular
+    steer_value         [{steer_value}]
+    steered_pid         [{steered_pid}]
+    target v.s. current [{self.state.target_tire_angle:.4f}] <--[{self.state.target_tire_angle - self.state.current_tire_angle:.4f}]--> [{self.state.current_tire_angle:.4f}]""")
 
-        return max(min(steer_value, 520), 480)
+        return max(min(steer_value, 530), 470)
 
 
 @dataclass
