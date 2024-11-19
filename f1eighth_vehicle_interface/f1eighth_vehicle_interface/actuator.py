@@ -18,13 +18,15 @@ from autoware_auto_vehicle_msgs.msg import VelocityReport
 
 T = TypeVar("T")
 class MyPid:
-    def __init__(self, Kp: T, Ki: T, Kd: T, period: float):
+    def __init__(self, Kp: T, Ki: T, Kd: T,integral_min: T, integral_max: T,period: float):
         self._kp = Kp
         self._ki = Ki
         self._kd = Kd
         self._period = period
         self._last_delta = 0
         self._integral = 0
+        self.integral_min = integral_min
+        self.integral_max = integral_max 
     
     def set_target(self, target: T):
         self._target = target
@@ -36,6 +38,7 @@ class MyPid:
         delta = self._target - current
         p = self._kp * delta
         self._integral += delta * self._period
+        self._integral = max(min(self._integral, self.integral_max), self.integral_min)
         i = self._ki * self._integral
         d = self._kd * ((delta - self._last_delta) / self._period)
         pid_value = p + i + d
@@ -64,6 +67,10 @@ class F1eighthActuator(Node):
         self.declare_parameter("kp_ste", Parameter.Type.DOUBLE)
         self.declare_parameter("ki_ste", Parameter.Type.DOUBLE)
         self.declare_parameter("kd_ste", Parameter.Type.DOUBLE)
+        self.declare_parameter("integral_min_spd", Parameter.Type.DOUBLE)
+        self.declare_parameter("integral_max_spd", Parameter.Type.DOUBLE)
+        self.declare_parameter("integral_min_ste", Parameter.Type.DOUBLE)
+        self.declare_parameter("integral_max_ste", Parameter.Type.DOUBLE)
 
         publication_period = (
             1.0 / self.get_parameter("rate").get_parameter_value().double_value
@@ -97,6 +104,10 @@ class F1eighthActuator(Node):
         kp_ste = self.get_parameter("kp_ste").get_parameter_value().double_value
         ki_ste = self.get_parameter("ki_ste").get_parameter_value().double_value
         kd_ste = self.get_parameter("kd_ste").get_parameter_value().double_value
+        integral_min_spd = self.get_parameter("integral_min_spd").get_parameter_value().double_value
+        integral_max_spd = self.get_parameter("integral_max_spd").get_parameter_value().double_value
+        integral_min_ste = self.get_parameter("integral_min_ste").get_parameter_value().double_value
+        integral_max_ste = self.get_parameter("integral_max_ste").get_parameter_value().double_value
 
         # Initialize the PID controller
         # min_speed_pid_output = config.min_pwm - config.init_pwm
@@ -112,6 +123,8 @@ class F1eighthActuator(Node):
             Kp=kp_pwm,
             Ki=ki_pwm,
             Kd=kd_pwm,
+            integral_min= integral_min_spd,
+            integral_max= integral_max_spd,
             period=publication_period,
         )
 
@@ -128,6 +141,8 @@ class F1eighthActuator(Node):
             Kp=kp_ste,
             Ki=ki_ste,
             Kd=kd_ste,
+            integral_min= integral_min_ste,
+            integral_max= integral_max_ste,
             period=publication_period,
         )
 

@@ -11,10 +11,16 @@
     kp_pwm: 0.0
     ki_pwm: 1.4
     kd_pwm: 0.0
+    integral_min_spd: -2.0
+    integral_max_spd: 2.0
+
     # angular speed part
     kp_ste: 0.0
     ki_ste: 3.0
     kd_ste: 0.0
+    integral_min_ste: -10.0
+    integral_max_ste: 10.0
+
 
     ## PWM parameters
     # The minimum PWM value when the vehicle drives backward at the max speed.
