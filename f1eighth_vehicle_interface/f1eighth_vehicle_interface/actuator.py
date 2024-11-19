@@ -191,7 +191,7 @@ class F1eighthActuator(Node):
             self.get_logger().info(f"target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
             return self.config.init_pwm
         
-        pid = int(self.speed_pid(self.state.current_speed)) * speed_pid_factor
+        pid = int(round(self.speed_pid(self.state.current_speed) * speed_pid_factor))
 
         pwm_value = self.config.init_pwm + pid
 
@@ -213,7 +213,7 @@ class F1eighthActuator(Node):
         if self.angle_pid.setpoint is None or self.state.current_tire_angle is None:
             return self.config.init_steer
         
-        pid = int(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor)
+        pid = int(round(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor))
         self.get_logger().info(f"[A]pid [{pid}], target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
         steer_value = self.config.init_steer + pid
 
