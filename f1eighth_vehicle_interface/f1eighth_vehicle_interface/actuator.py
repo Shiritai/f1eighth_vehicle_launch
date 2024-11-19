@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import sys
-from typing import Optional
+from typing import Optional, TypeVar
 from dataclasses import dataclass
 
 from Adafruit_PCA9685 import PCA9685
@@ -15,6 +15,30 @@ from geometry_msgs.msg import TwistWithCovarianceStamped
 from autoware_auto_control_msgs.msg import AckermannControlCommand
 from autoware_auto_vehicle_msgs.msg import VelocityReport
 
+
+T = TypeVar("T")
+class MyPid:
+    def __init__(self, Kp: T, Ki: T, Kd: T, period: float):
+        self._kp = Kp
+        self._ki = Ki
+        self._kd = Kd
+        self._period = period
+        self.last_delta = 0
+    
+    def set_target(self, target: T):
+        self.target = target
+    
+    def set_period(self, period: float):
+        self._period = period
+    
+    def __call__(self, current: T) -> T:
+        delta = self.target - current
+        p = self._kp * delta
+        i = self._ki * (delta * self.period)
+        d = self._kd * ((delta - self.last_delta) / self.period)
+        pid_value = p + i + d
+        self.last_delta = delta
+        return pid_value
 
 class F1eighthActuator(Node):
     def __init__(self):
@@ -73,24 +97,36 @@ class F1eighthActuator(Node):
         kd_ste = self.get_parameter("kd_ste").get_parameter_value().double_value
 
         # Initialize the PID controller
-        min_speed_pid_output = config.min_pwm - config.init_pwm
-        max_speed_pid_output = config.max_pwm - config.init_pwm
-        self.speed_pid = PID(
+        # min_speed_pid_output = config.min_pwm - config.init_pwm
+        # max_speed_pid_output = config.max_pwm - config.init_pwm
+        # self.speed_pid = PID(
+        #     Kp=kp_pwm,
+        #     Ki=ki_pwm,
+        #     Kd=kd_pwm,
+        #     output_limits=(min_speed_pid_output, max_speed_pid_output),
+        #     sample_time=publication_period,
+        # )
+        self.speed_pid = MyPid(
             Kp=kp_pwm,
             Ki=ki_pwm,
             Kd=kd_pwm,
-            output_limits=(min_speed_pid_output, max_speed_pid_output),
-            sample_time=publication_period,
+            period=publication_period,
         )
 
-        min_angle_pid_output = config.min_steer - config.init_steer
-        max_angle_pid_output = config.max_steer - config.init_steer
-        self.angle_pid = PID(
+        # min_angle_pid_output = config.min_steer - config.init_steer
+        # max_angle_pid_output = config.max_steer - config.init_steer
+        # self.angle_pid = PID(
+        #     Kp=kp_ste,
+        #     Ki=ki_ste,
+        #     Kd=kd_ste,
+        #     output_limits=(min_angle_pid_output, max_angle_pid_output),
+        #     sample_time=publication_period,
+        # )
+        self.angle_pid = MyPid(
             Kp=kp_ste,
             Ki=ki_ste,
             Kd=kd_ste,
-            output_limits=(min_angle_pid_output, max_angle_pid_output),
-            sample_time=publication_period,
+            period=publication_period,
         )
 
         # Initialize the controller state
@@ -184,11 +220,11 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        speed_pid_factor = 4
-        self.speed_pid.setpoint = self.state.target_speed
+        speed_pid_factor = 1
+        # self.speed_pid.setpoint = self.state.target_speed
+        self.speed_pid.set_target(self.state.target_speed)
 
-        if self.speed_pid.setpoint is None or self.state.current_speed is None:
-            self.get_logger().info(f"target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
+        if self.state.target_speed is None or self.state.target_speed == 0 or self.state.current_speed is None:
             return self.config.init_pwm
         
         pid = int(round(self.speed_pid(self.state.current_speed) * speed_pid_factor))
@@ -207,15 +243,18 @@ class F1eighthActuator(Node):
         # TODO: Calculate the PID value
         angle_pid_factor = 1
         # steer_value = self.config.init_steer  # scenario 1, 2
-        self.angle_pid.setpoint = 0
+        # return max(min(steer_value, 520), 480)
+    
+        angle_pid_factor = 1
+        # self.angle_pid.setpoint = 0
         # self.angle_pid.setpoint = self.state.target_tire_angle
+        self.angle_pid.set_target(self.state.target_tire_angle)
 
-        if self.angle_pid.setpoint is None or self.state.current_tire_angle is None:
+        if self.state.target_tire_angle is None or self.state.target_tire_angle == 0 or self.state.current_tire_angle is None:
             return self.config.init_steer
         
-        pid = int(round(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor))
-        self.get_logger().info(f"[A]pid [{pid}], target [{self.state.target_speed}], current [{self.state.current_speed}], angular [{self.state.current_tire_angle}]")
-        steer_value = self.config.init_steer + pid
+        steered_pid = int(round(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor))
+        steer_value = self.config.init_steer - steered_pid
 
         return max(min(steer_value, 520), 480)
 
