@@ -244,8 +244,8 @@ class F1eighthActuator(Node):
         # self.speed_pid.setpoint = self.state.target_speed
         self.speed_pid.set_target(self.state.target_speed)
 
-        # if self.state.target_speed is None or self.state.target_speed == 0 or self.state.current_speed is None:
-        if self.state.target_speed is None or self.state.current_speed is None:
+        if self.state.target_speed is None or self.state.target_speed == 0 or self.state.current_speed is None:
+        # if self.state.target_speed is None or self.state.current_speed is None:
             return self.config.init_pwm
         
         pid = int(round(self.speed_pid(self.state.current_speed) * speed_pid_factor))
@@ -276,8 +276,8 @@ class F1eighthActuator(Node):
         # self.angle_pid.setpoint = self.state.target_tire_angle
         self.angle_pid.set_target(self.state.target_tire_angle)
 
-        # if self.state.target_tire_angle is None or self.state.target_tire_angle == 0 or self.state.current_tire_angle is None:
-        if self.state.target_tire_angle is None  or self.state.current_tire_angle is None:
+        if self.state.target_tire_angle is None or self.state.target_tire_angle == 0 or self.state.current_tire_angle is None:
+        # if self.state.target_tire_angle is None  or self.state.current_tire_angle is None:
             return self.config.init_steer + angle_pwm_offset
         
         # steered_pid = int(round(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor))
