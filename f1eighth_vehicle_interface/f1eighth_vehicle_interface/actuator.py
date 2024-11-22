@@ -242,7 +242,7 @@ class F1eighthActuator(Node):
     pwm_value           [{pwm_value}]
     pid                 [{pid}]
     target v.s. current [{self.state.target_speed:.4f}] <--[{self.state.target_speed - self.state.current_speed:.4f}]--> [{self.state.current_speed:.4f}]""")
-        return max(min(pwm_value, 400), 375)
+        return max(min(pwm_value, 410), 375)
 
     def compute_steer_value(self) -> int:
         # TODO
@@ -252,21 +252,27 @@ class F1eighthActuator(Node):
 
         # TODO: Calculate the PID value
         angle_pid_factor = 1
-        angle_pwm_offset = -10
+        angle_pwm_offset = -12
         hardcode_target = 50  # 調整 target degree/s
         self.angle_pid.setpoint = 0
 
+    # target v.s. current [{self.state.target_tire_angle}] <----> [{self.state.current_tire_angle}]
+
         if self.state.target_tire_angle is None or self.state.target_tire_angle == 0 or self.state.current_tire_angle is None:
+        # if self.state.target_tire_angle is None or self.state.current_tire_angle is None:
+        # if self.state.target_tire_angle is None or self.angular_speed is None:
+        # if self.state.target_tire_angle is None:
             return self.config.init_steer + angle_pwm_offset
         
         steered_pid = int(round(self.angle_pid(hardcode_target - self.angular_speed) * angle_pid_factor))
         steer_value = self.config.init_steer + angle_pwm_offset + steered_pid
+
         if self.cnt % 2 == 0:
             self.get_logger().info(f"""Angular
+    target v.s. current [{self.state.target_tire_angle:.4f}] <----> [{self.state.current_tire_angle:.4f}]
     steer_value         [{steer_value}]
     steered_pid         [{steered_pid}]
-    target v.s. current [{self.state.target_tire_angle:.4f}] <--[{self.state.target_tire_angle - self.state.current_tire_angle:.4f}]--> [{self.state.current_tire_angle:.4f}]
-    angle_speed         [{self.angular_speed}]
+    angle_speed         [{self.__dict__.get("angular_speed")}]
     """)
 
         return max(min(steer_value, 620), 380)
