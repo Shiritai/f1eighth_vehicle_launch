@@ -110,14 +110,20 @@ class F1eighthActuator(Node):
         # integral_max_ste = self.get_parameter("integral_max_ste").get_parameter_value().double_value
 
         # Initialize the PID controller
-        self.speed_pid = MyPid(
+        self.speed_pid = PID(
             Kp=kp_pwm,
             Ki=ki_pwm,
             Kd=kd_pwm,
-            integral_min= integral_min_spd,
-            integral_max= integral_max_spd,
-            period=publication_period,
+            sample_time=publication_period,
         )
+        # self.speed_pid = MyPid(
+        #     Kp=kp_pwm,
+        #     Ki=ki_pwm,
+        #     Kd=kd_pwm,
+        #     integral_min= integral_min_spd,
+        #     integral_max= integral_max_spd,
+        #     period=publication_period,
+        # )
 
         min_angle_pid_output = config.min_steer - config.init_steer
         max_angle_pid_output = config.max_steer - config.init_steer
@@ -220,7 +226,8 @@ class F1eighthActuator(Node):
 
         # TODO: Calculate the PID value
         speed_pid_factor = 1
-        self.speed_pid.set_target(self.state.target_speed)
+        # self.speed_pid.set_target(self.state.target_speed)
+        self.speed_pid.setpoint = self.state.target_speed
 
         if self.state.target_speed is None or self.state.target_speed == 0 or self.state.current_speed is None:
             return self.config.init_pwm
