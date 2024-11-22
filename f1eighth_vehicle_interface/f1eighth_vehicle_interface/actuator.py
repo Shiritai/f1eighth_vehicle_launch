@@ -37,10 +37,8 @@ class MyPid:
     def __call__(self, current: T) -> T:
         delta = self._target - current
         p = self._kp * delta
-        # TODO check whether using +=
-        self._integral = delta * self._period
-        # self._integral += delta * self._period
-        # self._integral = max(min(self._integral, self.integral_max), self.integral_min)
+        self._integral += delta * self._period
+        self._integral = max(min(self._integral, self.integral_max), self.integral_min)
         i = self._ki * self._integral
         d = self._kd * ((delta - self._last_delta) / self._period)
         pid_value = p + i + d
@@ -108,19 +106,10 @@ class F1eighthActuator(Node):
         kd_ste = self.get_parameter("kd_ste").get_parameter_value().double_value
         integral_min_spd = self.get_parameter("integral_min_spd").get_parameter_value().double_value
         integral_max_spd = self.get_parameter("integral_max_spd").get_parameter_value().double_value
-        integral_min_ste = self.get_parameter("integral_min_ste").get_parameter_value().double_value
-        integral_max_ste = self.get_parameter("integral_max_ste").get_parameter_value().double_value
+        # integral_min_ste = self.get_parameter("integral_min_ste").get_parameter_value().double_value
+        # integral_max_ste = self.get_parameter("integral_max_ste").get_parameter_value().double_value
 
         # Initialize the PID controller
-        # min_speed_pid_output = config.min_pwm - config.init_pwm
-        # max_speed_pid_output = config.max_pwm - config.init_pwm
-        # self.speed_pid = PID(
-        #     Kp=kp_pwm,
-        #     Ki=ki_pwm,
-        #     Kd=kd_pwm,
-        #     output_limits=(min_speed_pid_output, max_speed_pid_output),
-        #     sample_time=publication_period,
-        # )
         self.speed_pid = MyPid(
             Kp=kp_pwm,
             Ki=ki_pwm,
@@ -130,22 +119,14 @@ class F1eighthActuator(Node):
             period=publication_period,
         )
 
-        # min_angle_pid_output = config.min_steer - config.init_steer
-        # max_angle_pid_output = config.max_steer - config.init_steer
-        # self.angle_pid = PID(
-        #     Kp=kp_ste,
-        #     Ki=ki_ste,
-        #     Kd=kd_ste,
-        #     output_limits=(min_angle_pid_output, max_angle_pid_output),
-        #     sample_time=publication_period,
-        # )
-        self.angle_pid = MyPid(
+        min_angle_pid_output = config.min_steer - config.init_steer
+        max_angle_pid_output = config.max_steer - config.init_steer
+        self.angle_pid = PID(
             Kp=kp_ste,
             Ki=ki_ste,
             Kd=kd_ste,
-            integral_min= integral_min_ste,
-            integral_max= integral_max_ste,
-            period=publication_period,
+            output_limits=(min_angle_pid_output, max_angle_pid_output),
+            sample_time=publication_period,
         )
 
         # Initialize the controller state
@@ -206,14 +187,12 @@ class F1eighthActuator(Node):
         self.timer = timer
 
     def imu_callback(self, msg):
-        # speed = msg.twist.twist.linear.x
-        # angular_speed = msg.twist.twist.angular.z
-        angular_speed = msg.angular_velocity.z
+        self.angular_speed = msg.angular_velocity.z
         l = 0.325
         v = self.state.current_speed
         # TODO: check correctness of the code
         if v != 0:
-            self.state.current_tire_angle = math.atan((angular_speed * l) / v) * 180 / math.pi
+            self.state.current_tire_angle = math.atan((self.angular_speed * l) / v) * 180 / math.pi
 
     def velocity_callback(self, msg):
         speed = msg.longitudinal_velocity
@@ -241,11 +220,9 @@ class F1eighthActuator(Node):
 
         # TODO: Calculate the PID value
         speed_pid_factor = 1
-        # self.speed_pid.setpoint = self.state.target_speed
         self.speed_pid.set_target(self.state.target_speed)
 
         if self.state.target_speed is None or self.state.target_speed == 0 or self.state.current_speed is None:
-        # if self.state.target_speed is None or self.state.current_speed is None:
             return self.config.init_pwm
         
         pid = int(round(self.speed_pid(self.state.current_speed) * speed_pid_factor))
@@ -267,29 +244,25 @@ class F1eighthActuator(Node):
         # - You are encouraged to add extra rules to improve the control.
 
         # TODO: Calculate the PID value
-        # steer_value = self.config.init_steer  # scenario 1, 2
-        # return max(min(steer_value, 520), 480)
-    
         angle_pid_factor = 1
         angle_pwm_offset = -10
-        # self.angle_pid.setpoint = 0
-        # self.angle_pid.setpoint = self.state.target_tire_angle
-        self.angle_pid.set_target(self.state.target_tire_angle)
+        hardcode_target = 50  # 調整 target degree/s
+        self.angle_pid.setpoint = 0
 
         if self.state.target_tire_angle is None or self.state.target_tire_angle == 0 or self.state.current_tire_angle is None:
-        # if self.state.target_tire_angle is None  or self.state.current_tire_angle is None:
             return self.config.init_steer + angle_pwm_offset
         
-        # steered_pid = int(round(self.angle_pid(self.state.current_tire_angle) * self.config.tire_angle_to_steer_ratio * angle_pid_factor))
-        steered_pid = int(round(self.angle_pid(self.state.current_tire_angle) * angle_pid_factor))
-        steer_value = self.config.init_steer + angle_pwm_offset - steered_pid
+        steered_pid = int(round(self.angle_pid(hardcode_target - self.angular_speed) * angle_pid_factor))
+        steer_value = self.config.init_steer + angle_pwm_offset + steered_pid
         if self.cnt % 2 == 0:
             self.get_logger().info(f"""Angular
     steer_value         [{steer_value}]
     steered_pid         [{steered_pid}]
-    target v.s. current [{self.state.target_tire_angle:.4f}] <--[{self.state.target_tire_angle - self.state.current_tire_angle:.4f}]--> [{self.state.current_tire_angle:.4f}]""")
+    target v.s. current [{self.state.target_tire_angle:.4f}] <--[{self.state.target_tire_angle - self.state.current_tire_angle:.4f}]--> [{self.state.current_tire_angle:.4f}]
+    angle_speed         [{self.angular_speed}]
+    """)
 
-        return max(min(steer_value, 530), 470)
+        return max(min(steer_value, 620), 380)
 
 
 @dataclass
